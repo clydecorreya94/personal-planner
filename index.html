@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LifeDash: Personal Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        emerald: { 600: '#059669', 700: '#047857', 800: '#065f46', 900: '#064e3b' }
+                    },
+                    spacing: {
+                        'safe': 'env(safe-area-inset-bottom)'
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 250px;
+        }
+        @media (min-width: 768px) {
+            .chart-container { height: 320px; max-height: 350px; }
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 2px;
+        }
+        @media (min-width: 640px) {
+            .calendar-grid { gap: 4px; }
+        }
+        
+        /* Prevent tap highlight on mobile */
+        * { -webkit-tap-highlight-color: transparent; }
+    </style>
+</head>
+<body class="bg-[#f8f7f4] dark:bg-stone-950 text-stone-800 dark:text-stone-200 font-sans antialiased transition-colors duration-300 pb-20 md:pb-8">
+
+    <!-- Chosen Palette: Warm Neutrals & Lush Emerald (Adapts to Dark/Light modes) -->
+    <!-- Application Structure Plan: Hybrid Responsive Layout. Uses standard desktop UI with top-nav, but switches to a native-feeling app layout on mobile with a fixed bottom navigation bar, touch-friendly inputs (16px to avoid iOS zoom), and truncated text boundaries to prevent horizontal overflow. -->
+    <!-- Visualization & Content Choices: 
+         1. Dashboard/Action Lists: Flexible containers, truncated text, enlarged tap targets.
+         2. Outflow Widget: JS calculation for W/M/Y, adjusted padding for touch.
+         3. Calendar: CSS Grid adapts cell height and font sizes for mobile screens.
+         4. NO SVG graphics used. NO Mermaid JS used. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 md:py-8">
+        
+        <!-- HEADER -->
+        <header class="mb-6 flex justify-between items-center bg-white dark:bg-stone-900 p-4 md:p-6 rounded-2xl shadow-sm border border-stone-200 dark:border-stone-800 transition-colors">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-emerald-700 dark:text-emerald-500 tracking-tight flex items-center gap-2">
+                    LifeDash <span class="text-lg md:text-xl text-stone-400 dark:text-stone-500 font-normal hidden sm:inline">| Kerala</span>
+                </h1>
+                <p class="text-xs md:text-sm text-stone-500 dark:text-stone-400 mt-1" id="current-date-display"></p>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <button onclick="toggleTheme()" class="flex items-center justify-center w-10 h-10 md:w-auto md:px-4 md:py-2 rounded-full md:rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 transition active:scale-95">
+                    <span id="theme-icon" class="text-lg md:mr-2">🌙</span> 
+                    <span id="theme-text" class="text-sm font-medium hidden md:inline">Dark Mode</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- DESKTOP NAVIGATION -->
+        <div class="hidden md:flex gap-2 bg-stone-100 dark:bg-stone-800 p-1.5 rounded-xl mb-6 border border-stone-200 dark:border-stone-700 max-w-fit">
+            <button onclick="switchTab('overview')" id="tab-desktop-overview" class="px-5 py-2.5 text-sm font-medium rounded-lg bg-white dark:bg-stone-700 shadow text-emerald-800 dark:text-emerald-400 transition-all">Dashboard</button>
+            <button onclick="switchTab('calendar')" id="tab-desktop-calendar" class="px-5 py-2.5 text-sm font-medium rounded-lg text-stone-600 dark:text-stone-300 hover:text-emerald-700 transition-all">Calendar</button>
+            <button onclick="switchTab('financials')" id="tab-desktop-financials" class="px-5 py-2.5 text-sm font-medium rounded-lg text-stone-600 dark:text-stone-300 hover:text-emerald-700 transition-all">Finances</button>
+            <button onclick="switchTab('household')" id="tab-desktop-household" class="px-5 py-2.5 text-sm font-medium rounded-lg text-stone-600 dark:text-stone-300 hover:text-emerald-700 transition-all">Household</button>
+            <button onclick="switchTab('history')" id="tab-desktop-history" class="px-5 py-2.5 text-sm font-medium rounded-lg text-stone-600 dark:text-stone-300 hover:text-emerald-700 transition-all">History</button>
+        </div>
+
+        <main id="main-content">
+            
+            <!-- OVERVIEW TAB (DASHBOARD) -->
+            <section id="view-overview" class="block animate-fade-in space-y-6">
+                
+                <!-- Top Row: Action Required & Outflow -->
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    
+                    <!-- Action Required -->
+                    <div class="xl:col-span-2 bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 flex flex-col transition-colors">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-base md:text-lg font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-500">
+                                <span>⚠️</span> Action Required (Next 7 Days)
+                            </h3>
+                        </div>
+                        
+                        <div id="urgent-list-pending" class="space-y-3 flex-1"></div>
+                        
+                        <div id="urgent-list-completed" class="mt-4 pt-4 border-t border-stone-100 dark:border-stone-800 space-y-2 opacity-70">
+                            <p class="text-[10px] md:text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Recently Completed</p>
+                        </div>
+                    </div>
+
+                    <!-- Outflow Widget -->
+                    <div class="bg-emerald-800 dark:bg-emerald-900 text-white rounded-2xl p-4 md:p-6 shadow-md flex flex-col justify-between transition-colors">
+                        <div>
+                            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                                <h3 class="text-base md:text-lg font-medium opacity-90">Recurring Outflow</h3>
+                                <div class="flex bg-emerald-900 dark:bg-stone-800 rounded p-1 text-xs self-start sm:self-auto">
+                                    <button onclick="setOutflowPeriod('weekly')" id="btn-outflow-weekly" class="px-3 py-1.5 md:px-2 md:py-1 rounded text-emerald-200 hover:bg-emerald-700 transition active:scale-95">W</button>
+                                    <button onclick="setOutflowPeriod('monthly')" id="btn-outflow-monthly" class="px-3 py-1.5 md:px-2 md:py-1 rounded bg-white text-emerald-800 shadow transition active:scale-95">M</button>
+                                    <button onclick="setOutflowPeriod('yearly')" id="btn-outflow-yearly" class="px-3 py-1.5 md:px-2 md:py-1 rounded text-emerald-200 hover:bg-emerald-700 transition active:scale-95">Y</button>
+                                </div>
+                            </div>
+                            
+                            <div class="text-3xl md:text-4xl font-bold mb-1" id="total-outflow-display">₹0</div>
+                            <p class="text-xs md:text-sm opacity-80 mb-6" id="outflow-subtitle">Estimated Monthly Run-rate</p>
+                            
+                            <div class="space-y-4">
+                                <div>
+                                    <div class="flex justify-between text-xs md:text-sm mb-1">
+                                        <span class="opacity-80">EMIs & Loans</span>
+                                        <span class="font-medium" id="emi-sum">₹0</span>
+                                    </div>
+                                    <div class="w-full bg-emerald-900 dark:bg-stone-800 rounded-full h-1.5"><div class="bg-amber-400 h-1.5 rounded-full" id="emi-bar" style="width: 0%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-xs md:text-sm mb-1">
+                                        <span class="opacity-80">SIPs & Savings</span>
+                                        <span class="font-medium" id="sip-sum">₹0</span>
+                                    </div>
+                                    <div class="w-full bg-emerald-900 dark:bg-stone-800 rounded-full h-1.5"><div class="bg-blue-400 h-1.5 rounded-full" id="sip-bar" style="width: 0%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-xs md:text-sm mb-1">
+                                        <span class="opacity-80">Bills / Utilities</span>
+                                        <span class="font-medium" id="bill-sum">₹0</span>
+                                    </div>
+                                    <div class="w-full bg-emerald-900 dark:bg-stone-800 rounded-full h-1.5"><div class="bg-pink-400 h-1.5 rounded-full" id="bill-bar" style="width: 0%"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Middle Row: Household Dashboard Lists -->
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 transition-colors">
+                    <h3 class="text-base md:text-lg font-semibold mb-4 flex items-center gap-2 text-stone-800 dark:text-stone-200">
+                        <span class="text-xl md:text-2xl">🏡</span> Household Duties & Chores
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="text-xs md:text-sm font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-3 border-b border-stone-100 dark:border-stone-800 pb-1">This Week</h4>
+                            <div id="dash-chores-week" class="space-y-2"></div>
+                        </div>
+                        <div>
+                            <h4 class="text-xs md:text-sm font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wider mb-3 border-b border-stone-100 dark:border-stone-800 pb-1">Later This Month</h4>
+                            <div id="dash-chores-month" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom Row: Upcoming Large Payments Alert -->
+                <div class="bg-blue-50 dark:bg-stone-800 rounded-2xl p-4 md:p-6 shadow-sm border border-blue-100 dark:border-stone-700 transition-colors">
+                    <h3 class="text-base md:text-lg font-semibold mb-4 flex items-center gap-2 text-blue-800 dark:text-blue-400">
+                        <span class="text-xl md:text-2xl">🛡️</span> Upcoming Major Renewals
+                    </h3>
+                    <div id="upcoming-large-payments" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- CALENDAR TAB -->
+            <section id="view-calendar" class="hidden animate-fade-in">
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 transition-colors">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-2">
+                        <h2 class="text-xl md:text-2xl font-semibold" id="calendar-month-year">Month Year</h2>
+                        <div class="flex gap-3 text-xs md:text-sm bg-stone-50 dark:bg-stone-800 p-2 rounded-lg">
+                            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-400"></span> Financial</span>
+                            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-emerald-400"></span> Duty</span>
+                        </div>
+                    </div>
+                    
+                    <div class="calendar-grid mb-1 md:mb-2 text-center text-xs md:text-sm font-semibold text-stone-500 dark:text-stone-400">
+                        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                    </div>
+                    <div id="calendar-body" class="calendar-grid text-xs md:text-sm">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- FINANCIALS TAB -->
+            <section id="view-financials" class="hidden animate-fade-in">
+                
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 mb-6 transition-colors">
+                    <h3 class="text-base md:text-lg font-semibold mb-4 flex items-center gap-2">
+                        <span class="text-lg md:text-xl">➕</span> Add New Record
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 items-end">
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-medium text-stone-500 mb-1">Name (e.g. LIC, Loan)</label>
+                            <!-- text-base prevents iOS zoom -->
+                            <input type="text" id="new-fin-name" class="w-full rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm text-base md:text-sm px-3 py-2 md:py-2 border focus:ring-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-stone-500 mb-1">Amount (₹)</label>
+                            <input type="number" id="new-fin-amount" class="w-full rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm text-base md:text-sm px-3 py-2 border focus:ring-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-stone-500 mb-1">Category</label>
+                            <select id="new-fin-type" class="w-full rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm text-base md:text-sm px-3 py-2 border focus:ring-emerald-500">
+                                <option value="EMI">EMI</option>
+                                <option value="SIP">SIP</option>
+                                <option value="Bill">Bill</option>
+                                <option value="Policy">Policy / Insure</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-stone-500 mb-1">Frequency</label>
+                            <select id="new-fin-freq" onchange="toggleMonthSelect()" class="w-full rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm text-base md:text-sm px-3 py-2 border focus:ring-emerald-500">
+                                <option value="monthly">Monthly</option>
+                                <option value="yearly">Yearly</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-2 sm:col-span-2 md:col-span-1">
+                            <div class="w-20 md:w-16">
+                                <label class="block text-xs font-medium text-stone-500 mb-1">Day</label>
+                                <input type="number" id="new-fin-day" placeholder="DD" min="1" max="31" class="w-full rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm text-base md:text-sm px-2 py-2 border focus:ring-emerald-500">
+                            </div>
+                            <div class="flex-1 hidden" id="month-select-container">
+                                <label class="block text-xs font-medium text-stone-500 mb-1">Month</label>
+                                <select id="new-fin-month" class="w-full rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm text-base md:text-sm px-2 py-2 border focus:ring-emerald-500">
+                                    <option value="0">Jan</option><option value="1">Feb</option><option value="2">Mar</option>
+                                    <option value="3">Apr</option><option value="4">May</option><option value="5">Jun</option>
+                                    <option value="6">Jul</option><option value="7">Aug</option><option value="8">Sep</option>
+                                    <option value="9">Oct</option><option value="10">Nov</option><option value="11">Dec</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="sm:col-span-2 md:col-span-6 flex justify-end mt-2 md:mt-0">
+                            <button onclick="addFinancial()" class="w-full md:w-auto bg-emerald-700 text-white px-6 py-3 md:py-2 rounded-lg md:rounded-md text-sm font-medium hover:bg-emerald-800 transition active:scale-95">Save Record</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <div class="bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 flex flex-col justify-center transition-colors min-h-[300px]">
+                        <h3 class="text-base md:text-lg font-semibold mb-4 text-center">Monthly Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="financeChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 transition-colors flex flex-col">
+                        <div class="flex justify-between items-center mb-4 border-b border-stone-100 dark:border-stone-800 pb-2">
+                            <h3 class="text-base md:text-lg font-semibold">Active Schedules</h3>
+                            <select id="finance-filter" onchange="renderFinancialList()" class="text-base md:text-sm py-1 border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 rounded-md shadow-sm focus:ring-emerald-500 max-w-[140px] md:max-w-none">
+                                <option value="all">All Types</option>
+                                <option value="EMI">EMIs</option>
+                                <option value="SIP">SIPs</option>
+                                <option value="Bill">Bills</option>
+                                <option value="monthly">Monthly Only</option>
+                                <option value="yearly">Yearly Only</option>
+                            </select>
+                        </div>
+                        <div class="overflow-y-auto pr-2 flex-1 max-h-[400px]" id="full-financial-list">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- HOUSEHOLD TAB -->
+            <section id="view-household" class="hidden animate-fade-in">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Purchases -->
+                    <div class="bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 transition-colors">
+                        <h3 class="text-base md:text-lg font-semibold mb-4 flex items-center gap-2">
+                            <span class="text-xl md:text-2xl">🛒</span> Weekly Purchases
+                        </h3>
+                        
+                        <!-- Grocery List -->
+                        <h4 class="text-xs md:text-sm font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2 mt-2">Grocery</h4>
+                        <div id="shopping-list-grocery" class="space-y-2 max-h-[200px] overflow-y-auto pr-1 mb-4"></div>
+                        
+                        <!-- Other Items List -->
+                        <h4 class="text-xs md:text-sm font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wider mb-2 border-t border-stone-100 dark:border-stone-800 pt-4">Other Items</h4>
+                        <div id="shopping-list-other" class="space-y-2 max-h-[200px] overflow-y-auto pr-1"></div>
+
+                        <div class="mt-4 pt-4 border-t border-stone-100 dark:border-stone-800 flex flex-col gap-3">
+                            <div class="flex gap-2">
+                                <input type="text" id="new-shop-item" placeholder="Add item..." class="w-full rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm text-base md:text-sm px-3 py-3 md:py-2 border focus:ring-emerald-500">
+                                <select id="new-shop-category" class="rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm text-base md:text-sm px-2 py-3 md:py-2 border focus:ring-emerald-500">
+                                    <option value="grocery">Grocery</option>
+                                    <option value="other_purchase">Other</option>
+                                </select>
+                            </div>
+                            <div class="flex gap-2 items-center">
+                                <input type="date" id="new-shop-date" class="rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-base md:text-sm px-2 py-3 md:py-2 border text-stone-500">
+                                <button onclick="addHouseholdTask('new-shop-item', 'new-shop-date', 'new-shop-category')" class="flex-1 bg-emerald-700 text-white px-4 py-3 md:py-2 rounded-lg md:rounded-md text-sm font-medium hover:bg-emerald-800 transition active:scale-95">Add Purchase</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chores -->
+                    <div class="bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 transition-colors">
+                        <h3 class="text-base md:text-lg font-semibold mb-4 flex items-center gap-2">
+                            <span class="text-xl md:text-2xl">🧹</span> Duties & Chores
+                        </h3>
+                        <div id="chores-list" class="space-y-2 max-h-[400px] overflow-y-auto pr-1"></div>
+                        <div class="mt-4 pt-4 border-t border-stone-100 dark:border-stone-800 flex flex-col gap-3">
+                            <input type="text" id="new-chore-item" placeholder="Add household duty..." class="w-full rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-sm text-base md:text-sm px-3 py-3 md:py-2 border focus:ring-emerald-500">
+                            <div class="flex gap-2 items-center">
+                                <input type="date" id="new-chore-date" class="rounded-md border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-base md:text-sm px-2 py-3 md:py-2 border text-stone-500">
+                                <button onclick="addHouseholdTask('new-chore-item', 'new-chore-date', 'chore')" class="flex-1 bg-emerald-700 text-white px-4 py-3 md:py-2 rounded-lg md:rounded-md text-sm font-medium hover:bg-emerald-800 transition active:scale-95">Add Duty</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- HISTORY TAB -->
+            <section id="view-history" class="hidden animate-fade-in">
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 transition-colors">
+                    <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4">
+                        <h2 class="text-xl md:text-2xl font-semibold flex items-center gap-2">
+                            <span>📜</span> Payment History
+                        </h2>
+                        <div class="flex flex-wrap gap-2 items-center bg-stone-50 dark:bg-stone-800/50 p-2 rounded-lg border border-stone-100 dark:border-stone-700">
+                            <span class="text-xs text-stone-500 font-medium px-1">Export:</span>
+                            <select id="export-period" class="text-xs md:text-sm py-1.5 px-2 border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 rounded-md shadow-sm focus:ring-emerald-500">
+                                <option value="week">Last 7 Days</option>
+                                <option value="month" selected>This Month</option>
+                                <option value="year">This Year</option>
+                                <option value="all">All Time</option>
+                            </select>
+                            <button onclick="exportData('csv')" class="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-emerald-200 dark:hover:bg-emerald-800 transition active:scale-95 flex items-center gap-1">📊 Excel (CSV)</button>
+                            <button onclick="exportData('pdf')" class="bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-red-200 dark:hover:bg-red-800 transition active:scale-95 flex items-center gap-1">📄 PDF</button>
+                            <button onclick="shareData()" class="bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-green-200 dark:hover:bg-green-800 transition active:scale-95 flex items-center gap-1">💬 Share</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto hide-scrollbar -mx-4 px-4 md:mx-0 md:px-0">
+                        <table class="w-full text-left border-collapse min-w-[400px]">
+                            <thead>
+                                <tr class="border-b border-stone-200 dark:border-stone-800 text-xs md:text-sm text-stone-500 dark:text-stone-400">
+                                    <th class="pb-3 font-medium">Date</th>
+                                    <th class="pb-3 font-medium">Item Name</th>
+                                    <th class="pb-3 font-medium">Type</th>
+                                    <th class="pb-3 font-medium text-right">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-list" class="text-sm">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- MOBILE BOTTOM NAVIGATION -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-stone-900 border-t border-stone-200 dark:border-stone-800 flex justify-around items-center pb-[env(safe-area-inset-bottom)] pt-2 px-2 z-50 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] transition-colors">
+        <button onclick="switchTab('overview')" id="tab-mobile-overview" class="flex flex-col items-center justify-center w-full py-2 text-emerald-600 dark:text-emerald-400 active:scale-95 transition-transform">
+            <span class="text-xl mb-0.5">📊</span>
+            <span class="text-[10px] font-medium">Dash</span>
+        </button>
+        <button onclick="switchTab('calendar')" id="tab-mobile-calendar" class="flex flex-col items-center justify-center w-full py-2 text-stone-500 dark:text-stone-400 active:scale-95 transition-transform">
+            <span class="text-xl mb-0.5">📅</span>
+            <span class="text-[10px] font-medium">Plan</span>
+        </button>
+        <button onclick="switchTab('financials')" id="tab-mobile-financials" class="flex flex-col items-center justify-center w-full py-2 text-stone-500 dark:text-stone-400 active:scale-95 transition-transform">
+            <span class="text-xl mb-0.5">💰</span>
+            <span class="text-[10px] font-medium">Funds</span>
+        </button>
+        <button onclick="switchTab('household')" id="tab-mobile-household" class="flex flex-col items-center justify-center w-full py-2 text-stone-500 dark:text-stone-400 active:scale-95 transition-transform">
+            <span class="text-xl mb-0.5">🏡</span>
+            <span class="text-[10px] font-medium">Tasks</span>
+        </button>
+        <button onclick="switchTab('history')" id="tab-mobile-history" class="flex flex-col items-center justify-center w-full py-2 text-stone-500 dark:text-stone-400 active:scale-95 transition-transform">
+            <span class="text-xl mb-0.5">📜</span>
+            <span class="text-[10px] font-medium">History</span>
+        </button>
+    </nav>
+
+    <script>
+        // State & Utilities
+        const appState = {
+            today: new Date(),
+            financeChartInstance: null,
+            outflowPeriod: 'monthly',
+            theme: 'light'
+        };
+
+        function getStartOfDay(date) {
+            const d = new Date(date);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        }
+        
+        appState.today = getStartOfDay(new Date());
+
+        const formatDateShort = (date) => {
+            return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
+        };
+
+        const formatCurrency = (amount) => {
+            return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+        };
+
+        // Initialize Dates for inputs
+        document.getElementById('new-shop-date').valueAsDate = appState.today;
+        document.getElementById('new-chore-date').valueAsDate = appState.today;
+
+        // Database - Loaded from LocalStorage or Default
+        let db = { financials: [], tasks: [], history: [] };
+
+        function loadData() {
+            const savedData = localStorage.getItem('lifeDashDB');
+            if (savedData) {
+                db = JSON.parse(savedData);
+                // Convert string dates back to Date objects
+                db.tasks.forEach(t => t.date = new Date(t.date));
+                db.history.forEach(h => h.datePaid = new Date(h.datePaid));
+            } else {
+                // Default data for the very first time opening the app
+                db = {
+                    financials: [
+                        { id: 1, name: "Home Loan HDFC", type: "EMI", amount: 24500, frequency: "monthly", dueDay: 5, lastPaidMonth: -1, lastPaidYear: -1 },
+                        { id: 3, name: "KSEB Electricity", type: "Bill", amount: 1850, frequency: "monthly", dueDay: 12, lastPaidMonth: -1, lastPaidYear: -1 },
+                        { id: 5, name: "Car Insurance", type: "Policy", amount: 15000, frequency: "yearly", dueDay: 15, dueMonth: appState.today.getMonth() + 1, lastPaidMonth: -1, lastPaidYear: -1 }
+                    ],
+                    tasks: [
+                        { id: 101, name: "Vegetables (Onion, Tomato)", category: "grocery", date: getStartOfDay(new Date()), done: false },
+                        { id: 104, name: "Clean water tank", category: "chore", date: new Date(appState.today.getTime() + (3 * 24 * 60 * 60 * 1000)), done: false }
+                    ],
+                    history: [] 
+                };
+                saveData();
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('lifeDashDB', JSON.stringify(db));
+        }
+
+        // Theme Management
+        function toggleTheme() {
+            const html = document.documentElement;
+            if(html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                appState.theme = 'light';
+                document.getElementById('theme-icon').innerText = '🌙';
+                document.getElementById('theme-text').innerText = 'Dark Mode';
+            } else {
+                html.classList.add('dark');
+                appState.theme = 'dark';
+                document.getElementById('theme-icon').innerText = '☀️';
+                document.getElementById('theme-text').innerText = 'Light Mode';
+            }
+            if(appState.financeChartInstance) {
+                appState.financeChartInstance.options.plugins.legend.labels.color = appState.theme === 'dark' ? '#d6d3d1' : '#44403c';
+                appState.financeChartInstance.update();
+            }
+        }
+
+        // Core Logic
+        function initApp() {
+            loadData(); // Load data from storage first
+            
+            // Check saved theme
+            const savedTheme = localStorage.getItem('lifeDashTheme');
+            if(savedTheme === 'dark') toggleTheme();
+
+            document.getElementById('current-date-display').innerText = 
+                appState.today.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            normalizeFinancialDates();
+            setOutflowPeriod('monthly'); 
+            renderFinancialList();
+            renderHousehold();
+            renderCalendar();
+            renderHistory();
+        }
+
+        function normalizeFinancialDates() {
+            const currentMonth = appState.today.getMonth();
+            const currentYear = appState.today.getFullYear();
+
+            db.financials.forEach(item => {
+                let nextDueDate;
+                if (item.frequency === 'monthly') {
+                    nextDueDate = new Date(currentYear, currentMonth, item.dueDay);
+                    if (item.lastPaidMonth === currentMonth && item.lastPaidYear === currentYear) {
+                        nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+                    }
+                } else if (item.frequency === 'yearly') {
+                    nextDueDate = new Date(currentYear, item.dueMonth, item.dueDay);
+                    if (item.lastPaidYear === currentYear) {
+                        nextDueDate.setFullYear(currentYear + 1);
+                    } else if (appState.today.getMonth() > item.dueMonth || (appState.today.getMonth() === item.dueMonth && appState.today.getDate() > item.dueDay)) {
+                        if(item.lastPaidYear === currentYear){ nextDueDate.setFullYear(currentYear + 1); }
+                    }
+                }
+
+                item.actualDate = nextDueDate;
+                item.daysLeft = Math.ceil((nextDueDate - appState.today) / (1000 * 60 * 60 * 24));
+                item.isPaidCycle = (item.frequency === 'monthly' && item.lastPaidMonth === currentMonth && item.lastPaidYear === currentYear) || 
+                                   (item.frequency === 'yearly' && item.lastPaidYear === currentYear);
+            });
+            db.financials.sort((a, b) => a.daysLeft - b.daysLeft);
+        }
+
+        // Dashboard Renders
+        function renderDashboard() {
+            renderActionRequired();
+            renderOutflowWidget();
+            renderHouseholdDashboard();
+            renderUpcomingLargePayments();
+        }
+
+        function renderActionRequired() {
+            const pendingList = document.getElementById('urgent-list-pending');
+            const completedList = document.getElementById('urgent-list-completed');
+            pendingList.innerHTML = '';
+            completedList.innerHTML = '<p class="text-[10px] md:text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Recently Completed</p>';
+
+            let hasPending = false; let hasCompleted = false;
+
+            db.financials.forEach(f => {
+                if (f.daysLeft >= -30 && f.daysLeft <= 7 && !f.isPaidCycle) {
+                    hasPending = true;
+                    let color = f.daysLeft <= 2 ? 'text-red-600 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900' : 'text-amber-700 dark:text-amber-500 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900';
+                    let daysText = f.daysLeft < 0 ? `Overdue by ${Math.abs(f.daysLeft)}d` : (f.daysLeft === 0 ? 'Today' : `in ${f.daysLeft}d`);
+                    
+                    pendingList.innerHTML += `
+                        <div class="flex justify-between items-center p-3 md:p-4 rounded-xl border ${color} mb-2 shadow-sm">
+                            <div class="flex items-center gap-3 min-w-0 pr-2">
+                                <span class="text-xl md:text-2xl flex-shrink-0">${f.type === 'Bill' ? '🧾' : (f.type === 'Policy' ? '🛡️' : '🏦')}</span>
+                                <div class="min-w-0">
+                                    <p class="font-bold text-sm truncate">${f.name}</p>
+                                    <p class="text-xs opacity-80 truncate">Due ${daysText} (${formatDateShort(f.actualDate)})</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 flex-shrink-0">
+                                <span class="font-bold text-sm">${formatCurrency(f.amount)}</span>
+                                <button onclick="markPaid(${f.id}, true)" title="Mark Paid" class="w-8 h-8 md:w-7 md:h-7 rounded-full bg-white dark:bg-stone-800 bg-opacity-70 hover:bg-opacity-100 flex items-center justify-center transition border border-current opacity-90 active:scale-90">✓</button>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            db.tasks.forEach(t => {
+                const daysLeft = Math.ceil((t.date - appState.today) / (1000 * 60 * 60 * 24));
+                
+                if (daysLeft <= 7) {
+                    let displayCategory = t.category.replace('_', ' ');
+                    const itemHTML = `
+                        <div class="flex justify-between items-center p-3 md:p-4 rounded-xl border border-stone-200 dark:border-stone-700 ${t.done ? 'bg-stone-50/50 dark:bg-stone-800/50' : 'bg-white dark:bg-stone-800'} mb-2 group shadow-sm">
+                            <div class="flex items-center gap-3 flex-1 min-w-0 cursor-pointer py-1" onclick="toggleTask(${t.id}, true)">
+                                <div class="w-6 h-6 md:w-5 md:h-5 rounded border flex-shrink-0 ${t.done ? 'bg-emerald-500 border-emerald-500 flex items-center justify-center' : 'border-stone-300 dark:border-stone-600'} transition-colors">
+                                    ${t.done ? '<span class="text-white text-xs">✓</span>' : ''}
+                                </div>
+                                <div class="min-w-0 pr-2 ${t.done ? 'line-through opacity-50' : ''}">
+                                    <p class="font-medium text-sm truncate">${t.name}</p>
+                                    <p class="text-xs text-stone-500">${daysLeft < 0 ? 'Overdue' : (daysLeft === 0 ? 'Today' : formatDateShort(t.date))}</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <span class="text-[10px] bg-stone-100 dark:bg-stone-700 text-stone-600 dark:text-stone-300 px-2 py-1 rounded-full capitalize hidden sm:inline-block">${displayCategory}</span>
+                                <button onclick="deleteTask(${t.id})" class="text-stone-400 hover:text-red-500 md:opacity-0 group-hover:opacity-100 transition p-2 active:scale-90">🗑️</button>
+                            </div>
+                        </div>
+                    `;
+
+                    if (t.done) { hasCompleted = true; completedList.innerHTML += itemHTML; } 
+                    else if (daysLeft <= 7) { hasPending = true; pendingList.innerHTML += itemHTML; }
+                }
+            });
+
+            if (!hasPending) pendingList.innerHTML = '<p class="text-sm text-stone-500 italic p-3">All clear for the next few days!</p>';
+            if (!hasCompleted) completedList.style.display = 'none';
+            else completedList.style.display = 'block';
+        }
+
+        function renderHouseholdDashboard() {
+            const weekList = document.getElementById('dash-chores-week');
+            const monthList = document.getElementById('dash-chores-month');
+            weekList.innerHTML = ''; monthList.innerHTML = '';
+
+            let hasWeek = false; let hasMonth = false;
+
+            db.tasks.filter(t => !t.done).forEach(t => {
+                const daysLeft = Math.ceil((t.date - appState.today) / (1000 * 60 * 60 * 24));
+                const itemHtml = `<div class="text-sm flex justify-between items-center p-3 md:p-2 bg-stone-50 md:bg-transparent dark:bg-stone-800/50 md:dark:bg-transparent rounded-lg md:rounded hover:bg-stone-100 dark:hover:bg-stone-800 border border-stone-100 dark:border-stone-800 md:border-transparent transition cursor-pointer active:scale-[0.98]" onclick="toggleTask(${t.id}, true)">
+                    <span class="truncate pr-2 font-medium md:font-normal">🔹 ${t.name}</span>
+                    <span class="text-[10px] md:text-xs text-stone-400 whitespace-nowrap bg-white dark:bg-stone-900 md:bg-transparent px-2 py-1 md:p-0 rounded">${formatDateShort(t.date)}</span>
+                </div>`;
+
+                if(daysLeft >= 0 && daysLeft <= 7) { weekList.innerHTML += itemHtml; hasWeek = true; } 
+                else if (daysLeft > 7 && daysLeft <= 31) { monthList.innerHTML += itemHtml; hasMonth = true; }
+            });
+
+            if(!hasWeek) weekList.innerHTML = '<p class="text-xs text-stone-400 italic py-2">No pending tasks this week.</p>';
+            if(!hasMonth) monthList.innerHTML = '<p class="text-xs text-stone-400 italic py-2">No tasks set for later this month.</p>';
+        }
+
+        function renderUpcomingLargePayments() {
+            const list = document.getElementById('upcoming-large-payments');
+            list.innerHTML = '';
+            let count = 0;
+
+            db.financials.filter(f => f.frequency === 'yearly' && !f.isPaidCycle).forEach(f => {
+                if(f.daysLeft >= 0 && f.daysLeft <= 90) {
+                    count++;
+                    list.innerHTML += `
+                        <div class="bg-white dark:bg-stone-900 p-4 rounded-xl shadow-sm border border-blue-100 dark:border-stone-700">
+                            <p class="font-medium text-sm text-stone-800 dark:text-stone-200 truncate">${f.name}</p>
+                            <p class="text-2xl font-bold text-blue-700 dark:text-blue-500 my-1">${formatCurrency(f.amount)}</p>
+                            <p class="text-xs text-stone-500">Due: ${formatDateShort(f.actualDate)} <br/>(${f.daysLeft} days left)</p>
+                        </div>
+                    `;
+                }
+            });
+
+            if(count === 0) list.innerHTML = '<p class="text-sm text-stone-500 dark:text-stone-400 italic col-span-full">No large yearly payments due in the next 3 months.</p>';
+        }
+
+        function setOutflowPeriod(period) {
+            appState.outflowPeriod = period;
+            ['weekly', 'monthly', 'yearly'].forEach(p => {
+                const btn = document.getElementById(`btn-outflow-${p}`);
+                if(p === period) {
+                    btn.classList.add('bg-white', 'text-emerald-800', 'shadow');
+                    btn.classList.remove('text-emerald-200', 'hover:bg-emerald-700');
+                } else {
+                    btn.classList.remove('bg-white', 'text-emerald-800', 'shadow');
+                    btn.classList.add('text-emerald-200', 'hover:bg-emerald-700');
+                }
+            });
+
+            const labels = { weekly: "Est. Weekly Run-rate", monthly: "Est. Monthly Run-rate", yearly: "Est. Yearly Total" };
+            document.getElementById('outflow-subtitle').innerText = labels[period];
+            renderOutflowWidget(); updateChart();
+        }
+
+        function renderOutflowWidget() {
+            let emi = 0, sip = 0, bill = 0;
+            db.financials.forEach(f => {
+                let calcAmount = 0;
+                if(appState.outflowPeriod === 'weekly') calcAmount = f.frequency === 'monthly' ? (f.amount * 12) / 52 : f.amount / 52;
+                else if (appState.outflowPeriod === 'monthly') calcAmount = f.frequency === 'monthly' ? f.amount : f.amount / 12;
+                else if (appState.outflowPeriod === 'yearly') calcAmount = f.frequency === 'monthly' ? f.amount * 12 : f.amount;
+
+                if(f.type === 'EMI' || f.type === 'Policy') emi += calcAmount; 
+                if(f.type === 'SIP') sip += calcAmount;
+                if(f.type === 'Bill') bill += calcAmount;
+            });
+
+            const total = emi + sip + bill;
+            document.getElementById('total-outflow-display').innerText = formatCurrency(total);
+            document.getElementById('emi-sum').innerText = formatCurrency(emi);
+            document.getElementById('sip-sum').innerText = formatCurrency(sip);
+            document.getElementById('bill-sum').innerText = formatCurrency(bill);
+            
+            document.getElementById('emi-bar').style.width = total ? `${(emi/total)*100}%` : '0%';
+            document.getElementById('sip-bar').style.width = total ? `${(sip/total)*100}%` : '0%';
+            document.getElementById('bill-bar').style.width = total ? `${(bill/total)*100}%` : '0%';
+        }
+
+        // Calendar Render
+        function renderCalendar() {
+            const year = appState.today.getFullYear();
+            const month = appState.today.getMonth();
+            document.getElementById('calendar-month-year').innerText = appState.today.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+            
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const tbody = document.getElementById('calendar-body');
+            tbody.innerHTML = '';
+
+            for(let i=0; i<firstDay; i++) {
+                tbody.innerHTML += `<div class="p-1 md:p-2 border border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/50 opacity-50 min-h-[60px] md:min-h-[80px] rounded"></div>`;
+            }
+
+            for(let day=1; day<=daysInMonth; day++) {
+                const isToday = day === appState.today.getDate();
+                let finEvents = db.financials.filter(f => f.actualDate.getDate() === day && f.actualDate.getMonth() === month && f.actualDate.getFullYear() === year && !f.isPaidCycle);
+                let taskEvents = db.tasks.filter(t => t.date.getDate() === day && t.date.getMonth() === month && t.date.getFullYear() === year && !t.done);
+
+                let dotsHtml = '';
+                if(finEvents.length > 0) dotsHtml += `<div class="w-full bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 text-[9px] md:text-[10px] rounded px-1 truncate mb-0.5" title="${finEvents.map(f=>f.name).join(', ')}">${finEvents.length} Due</div>`;
+                if(taskEvents.length > 0) dotsHtml += `<div class="w-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 text-[9px] md:text-[10px] rounded px-1 truncate" title="${taskEvents.map(t=>t.name).join(', ')}">${taskEvents.length} Task</div>`;
+
+                tbody.innerHTML += `
+                    <div class="p-1 sm:p-2 border border-stone-200 dark:border-stone-800 min-h-[60px] md:min-h-[80px] rounded ${isToday ? 'bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500' : 'bg-white dark:bg-stone-900'}">
+                        <div class="font-semibold text-stone-600 dark:text-stone-300 mb-1 ${isToday ? 'text-emerald-700 dark:text-emerald-400' : ''}">${day}</div>
+                        ${dotsHtml}
+                    </div>
+                `;
+            }
+        }
+
+        // Financials List Render
+        function renderFinancialList() {
+            const filter = document.getElementById('finance-filter').value;
+            const list = document.getElementById('full-financial-list');
+            list.innerHTML = '';
+
+            let filtered = db.financials;
+            if (filter === 'monthly') filtered = db.financials.filter(f => f.frequency === 'monthly');
+            else if (filter === 'yearly') filtered = db.financials.filter(f => f.frequency === 'yearly');
+            else if (filter !== 'all') filtered = db.financials.filter(f => f.type === filter);
+
+            filtered.forEach(f => {
+                let badgeColor = f.type === 'EMI' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200' : 
+                                (f.type === 'SIP' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 
+                                (f.type === 'Policy' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' : 
+                                'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'));
+                
+                let statusHtml = '';
+                if (f.isPaidCycle) {
+                    statusHtml = `<span class="text-xs text-emerald-600 dark:text-emerald-400 font-medium block">Paid cycle</span><span class="text-[10px] text-stone-400">Next: ${formatDateShort(f.actualDate)}</span>`;
+                } else {
+                    let daysText = f.daysLeft < 0 ? `Overdue` : (f.daysLeft === 0 ? 'Today' : `in ${f.daysLeft}d`);
+                    statusHtml = `<span class="text-xs ${f.daysLeft <= 3 ? 'text-red-500 font-medium' : 'text-stone-400'}">${daysText}</span>`;
+                }
+
+                list.innerHTML += `
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 md:p-3 border-b border-stone-100 dark:border-stone-800 last:border-0 hover:bg-stone-50 dark:hover:bg-stone-800 transition gap-3">
+                        <div class="flex-1 w-full min-w-0 pr-2">
+                            <p class="font-medium text-sm md:text-base text-stone-800 dark:text-stone-200 truncate">${f.name}</p>
+                            <div class="flex items-center gap-2 mt-1 flex-wrap">
+                                <span class="text-[10px] px-1.5 py-0.5 rounded font-semibold ${badgeColor}">${f.type}</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-stone-100 dark:bg-stone-700 text-stone-600 dark:text-stone-300 capitalize">${f.frequency}</span>
+                                <span class="text-[10px] text-stone-500 dark:text-stone-400">${f.frequency === 'yearly' ? 'On ' + formatDateShort(new Date(2000, f.dueMonth, f.dueDay)).replace(/20\d\d/, '') : 'Every ' + f.dueDay + 'th'}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between w-full sm:w-auto gap-4">
+                            <div class="text-left sm:text-right flex-1 sm:flex-auto">
+                                <p class="font-bold text-sm md:text-base text-stone-800 dark:text-stone-200">${formatCurrency(f.amount)}</p>
+                                <div class="leading-tight">${statusHtml}</div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="markPaid(${f.id})" title="Mark Paid" class="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center text-stone-400 hover:text-emerald-600 bg-white dark:bg-stone-800 rounded-lg md:rounded shadow-sm border border-stone-200 dark:border-stone-700 transition active:scale-90 ${f.isPaidCycle ? 'opacity-30 cursor-not-allowed' : ''}" ${f.isPaidCycle ? 'disabled' : ''}>✅</button>
+                                <button onclick="deleteFinancial(${f.id})" title="Delete" class="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center text-stone-400 hover:text-red-600 bg-white dark:bg-stone-800 rounded-lg md:rounded shadow-sm border border-stone-200 dark:border-stone-700 transition active:scale-90">🗑️</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Household List Render
+        function renderHousehold() {
+            const shopListGrocery = document.getElementById('shopping-list-grocery');
+            const shopListOther = document.getElementById('shopping-list-other');
+            const choresList = document.getElementById('chores-list');
+            shopListGrocery.innerHTML = ''; shopListOther.innerHTML = ''; choresList.innerHTML = '';
+
+            db.tasks.forEach(t => {
+                const itemHTML = `
+                    <div class="flex items-center gap-3 p-3 md:p-2 bg-stone-50 dark:bg-stone-800/30 md:bg-transparent md:dark:bg-transparent border border-stone-100 dark:border-stone-800 md:border-transparent hover:bg-stone-100 dark:hover:bg-stone-800 rounded-xl md:rounded-md transition group">
+                        <div class="flex-1 flex items-center gap-3 min-w-0 cursor-pointer" onclick="toggleTask(${t.id})">
+                            <div class="w-6 h-6 md:w-5 md:h-5 rounded border flex-shrink-0 ${t.done ? 'bg-emerald-500 border-emerald-500 flex items-center justify-center' : 'border-stone-300 dark:border-stone-600 group-hover:border-emerald-400'} transition-colors">
+                                ${t.done ? '<span class="text-white text-xs">✓</span>' : ''}
+                            </div>
+                            <span class="text-sm md:text-base flex-1 truncate ${t.done ? 'line-through text-stone-400' : 'text-stone-700 dark:text-stone-200'}">${t.name}</span>
+                        </div>
+                        <span class="text-[10px] md:text-xs text-stone-400 whitespace-nowrap bg-white dark:bg-stone-900 md:bg-transparent px-2 py-1 md:p-0 rounded">${formatDateShort(t.date)}</span>
+                        <button onclick="deleteTask(${t.id})" class="text-stone-400 hover:text-red-500 md:opacity-0 group-hover:opacity-100 transition p-2 md:p-1 active:scale-90">🗑️</button>
+                    </div>
+                `;
+                if (t.category === 'grocery') shopListGrocery.innerHTML += itemHTML;
+                else if (t.category === 'other_purchase') shopListOther.innerHTML += itemHTML;
+                else if (t.category === 'chore') choresList.innerHTML += itemHTML;
+            });
+            
+            if(shopListGrocery.innerHTML === '') shopListGrocery.innerHTML = '<p class="text-xs text-stone-400 italic py-2">No groceries needed.</p>';
+            if(shopListOther.innerHTML === '') shopListOther.innerHTML = '<p class="text-xs text-stone-400 italic py-2">No other items needed.</p>';
+            if(choresList.innerHTML === '') choresList.innerHTML = '<p class="text-xs text-stone-400 italic py-2">All caught up on chores.</p>';
+        }
+
+        // History Render
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            list.innerHTML = '';
+            const sortedHistory = [...db.history].sort((a, b) => b.datePaid - a.datePaid);
+
+            sortedHistory.forEach(h => {
+                list.innerHTML += `
+                    <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800 transition">
+                        <td class="py-3 px-1 text-stone-600 dark:text-stone-400 whitespace-nowrap text-xs md:text-sm">${formatDateShort(h.datePaid)}</td>
+                        <td class="py-3 px-1 font-medium text-stone-800 dark:text-stone-200 text-sm md:text-base max-w-[120px] truncate">${h.name}</td>
+                        <td class="py-3 px-1">
+                            <span class="px-1.5 py-0.5 text-[10px] rounded bg-stone-100 dark:bg-stone-700 text-stone-600 dark:text-stone-300 uppercase hidden sm:inline-block">${h.type}</span>
+                        </td>
+                        <td class="py-3 px-1 font-medium text-stone-800 dark:text-stone-200 text-right text-sm md:text-base">${formatCurrency(h.amount)}</td>
+                    </tr>
+                `;
+            });
+            if(sortedHistory.length === 0) list.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-stone-500 italic">No payment history yet.</td></tr>';
+        }
+
+        // Actions
+        function toggleMonthSelect() {
+            const freq = document.getElementById('new-fin-freq').value;
+            const container = document.getElementById('month-select-container');
+            if(freq === 'yearly') container.classList.remove('hidden');
+            else container.classList.add('hidden');
+        }
+
+        function addFinancial() {
+            const name = document.getElementById('new-fin-name').value.trim();
+            const amount = parseFloat(document.getElementById('new-fin-amount').value);
+            const type = document.getElementById('new-fin-type').value;
+            const freq = document.getElementById('new-fin-freq').value;
+            const day = parseInt(document.getElementById('new-fin-day').value);
+            const month = parseInt(document.getElementById('new-fin-month').value);
+
+            if(!name || isNaN(amount) || isNaN(day) || day < 1 || day > 31) {
+                alert("Please fill in all fields correctly."); return;
+            }
+
+            db.financials.push({
+                id: Date.now(), name: name, amount: amount, type: type, frequency: freq,
+                dueDay: day, dueMonth: freq === 'yearly' ? month : undefined, lastPaidMonth: -1, lastPaidYear: -1
+            });
+            document.getElementById('new-fin-name').value = '';
+            document.getElementById('new-fin-amount').value = '';
+            document.getElementById('new-fin-day').value = '';
+            
+            saveData();
+            updateAllViews();
+        }
+
+        function deleteFinancial(id) {
+            if(confirm("Delete this record?")) {
+                db.financials = db.financials.filter(f => f.id !== id); 
+                saveData();
+                updateAllViews();
+            }
+        }
+
+        function markPaid(id, fromDashboard = false) {
+            const fin = db.financials.find(f => f.id === id);
+            if(fin) {
+                db.history.push({ id: Date.now(), name: fin.name, amount: fin.amount, type: fin.type, datePaid: new Date(appState.today) });
+                fin.lastPaidMonth = appState.today.getMonth(); fin.lastPaidYear = appState.today.getFullYear();
+                
+                saveData();
+                updateAllViews();
+            }
+        }
+
+        function toggleTask(id, fromDashboard = false) {
+            const task = db.tasks.find(t => t.id === id);
+            if (task) {
+                task.done = !task.done;
+                
+                saveData();
+                renderHousehold(); if(fromDashboard) renderDashboard(); renderCalendar();
+            }
+        }
+
+        function deleteTask(id) {
+            db.tasks = db.tasks.filter(t => t.id !== id);
+            
+            saveData();
+            renderHousehold(); renderDashboard(); renderCalendar();
+        }
+
+        function addHouseholdTask(inputId, dateInputId, categoryIdOrString) {
+            const input = document.getElementById(inputId);
+            const dateInput = document.getElementById(dateInputId);
+            
+            let category = categoryIdOrString;
+            const categoryElement = document.getElementById(categoryIdOrString);
+            if (categoryElement) {
+                category = categoryElement.value;
+            }
+
+            const val = input.value.trim();
+            const dateVal = new Date(dateInput.value);
+
+            if (val && !isNaN(dateVal)) {
+                db.tasks.push({ id: Date.now(), name: val, category: category, date: getStartOfDay(dateVal), done: false });
+                input.value = ''; dateInput.valueAsDate = appState.today;
+                
+                saveData();
+                renderHousehold(); renderDashboard(); renderCalendar();
+            } else { alert("Enter a task name and valid date."); }
+        }
+
+        function updateAllViews() {
+            normalizeFinancialDates(); renderFinancialList(); renderDashboard(); renderCalendar(); renderHistory(); updateChart();
+        }
+
+        // Export Functionality
+        function getFilteredHistoryForExport() {
+            const period = document.getElementById('export-period').value;
+            const now = appState.today;
+            
+            return db.history.filter(h => {
+                const d = new Date(h.datePaid);
+                if (period === 'week') {
+                    const oneWeekAgo = new Date(now);
+                    oneWeekAgo.setDate(now.getDate() - 7);
+                    return d >= oneWeekAgo && d <= now;
+                } else if (period === 'month') {
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                } else if (period === 'year') {
+                    return d.getFullYear() === now.getFullYear();
+                }
+                return true; // 'all'
+            }).sort((a, b) => b.datePaid - a.datePaid); // Newest first
+        }
+
+        function exportData(format) {
+            const data = getFilteredHistoryForExport();
+            if (data.length === 0) {
+                alert("No data available to export for the selected period.");
+                return;
+            }
+
+            const periodName = document.getElementById('export-period').options[document.getElementById('export-period').selectedIndex].text;
+            const fileName = `LifeDash_Expenses_${periodName.replace(/ /g, '_')}`;
+
+            if (format === 'csv') {
+                // CSV Export (Opens beautifully in Excel)
+                let csvContent = "data:text/csv;charset=utf-8,";
+                csvContent += "Date,Item Name,Category,Amount (INR)\n";
+                
+                data.forEach(row => {
+                    const dateStr = formatDateShort(row.datePaid).replace(/,/g, '');
+                    const nameStr = `"${row.name.replace(/"/g, '""')}"`; // Escape commas in names
+                    csvContent += `${dateStr},${nameStr},${row.type},${row.amount}\n`;
+                });
+
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `${fileName}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+            } else if (format === 'pdf') {
+                // PDF Export using jsPDF
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                doc.setFontSize(16);
+                doc.text(`LifeDash Payment History`, 14, 20);
+                doc.setFontSize(10);
+                doc.setTextColor(100);
+                doc.text(`Period: ${periodName} | Generated: ${formatDateShort(appState.today)}`, 14, 28);
+
+                const tableData = data.map(row => [
+                    formatDateShort(row.datePaid),
+                    row.name,
+                    row.type,
+                    formatCurrency(row.amount)
+                ]);
+
+                // Calculate & append Total row
+                const total = data.reduce((sum, row) => sum + row.amount, 0);
+                tableData.push(['', '', 'TOTAL', formatCurrency(total)]);
+
+                doc.autoTable({
+                    startY: 33,
+                    head: [['Date', 'Item Name', 'Category', 'Amount']],
+                    body: tableData,
+                    theme: 'grid',
+                    headStyles: { fillColor: [4, 120, 87] }, // Emerald-700
+                    willDrawCell: function(data) {
+                        // Bold and style the last row (Total row)
+                        if (data.row.index === tableData.length - 1) {
+                            doc.setFont(undefined, 'bold');
+                            if(data.column.index === 3) {
+                                doc.setTextColor(4, 120, 87); // Emerald color
+                            }
+                        }
+                    }
+                });
+
+                doc.save(`${fileName}.pdf`);
+            }
+        }
+
+        function shareData() {
+            const data = getFilteredHistoryForExport();
+            if (data.length === 0) {
+                alert("No data available to share for the selected period.");
+                return;
+            }
+
+            const periodName = document.getElementById('export-period').options[document.getElementById('export-period').selectedIndex].text;
+            
+            let textToShare = `📊 *LifeDash Expense Report*\nPeriod: ${periodName}\n\n`;
+            let total = 0;
+            
+            data.forEach(row => {
+                textToShare += `• ${formatDateShort(row.datePaid).replace(/20(\d\d)/, '$1')} - ${row.name} (${formatCurrency(row.amount)})\n`;
+                total += row.amount;
+            });
+            
+            textToShare += `\n💰 *Total: ${formatCurrency(total)}*`;
+
+            // Use the native Web Share API if available (perfect for Mobile -> WhatsApp)
+            if (navigator.share) {
+                navigator.share({
+                    title: 'LifeDash Expenses',
+                    text: textToShare
+                }).catch((error) => console.log('Error sharing', error));
+            } else {
+                // Fallback for desktop: Open WhatsApp web directly
+                const encodedText = encodeURIComponent(textToShare);
+                const waUrl = `https://wa.me/?text=${encodedText}`;
+                window.open(waUrl, '_blank');
+            }
+        }
+
+        // Navigation
+        function switchTab(tabId) {
+            // Hide all views
+            ['overview', 'calendar', 'financials', 'household', 'history'].forEach(id => {
+                const view = document.getElementById(`view-${id}`);
+                if(view) { view.classList.add('hidden'); view.classList.remove('block'); }
+                
+                // Reset Desktop Tabs
+                const btnD = document.getElementById(`tab-desktop-${id}`);
+                if(btnD) {
+                    btnD.classList.remove('bg-white', 'dark:bg-stone-700', 'shadow', 'text-emerald-800', 'dark:text-emerald-400');
+                    btnD.classList.add('text-stone-600', 'dark:text-stone-300');
+                }
+
+                // Reset Mobile Tabs
+                const btnM = document.getElementById(`tab-mobile-${id}`);
+                if(btnM) {
+                    btnM.classList.remove('text-emerald-600', 'dark:text-emerald-400');
+                    btnM.classList.add('text-stone-500', 'dark:text-stone-400');
+                }
+            });
+
+            // Show active view
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            document.getElementById(`view-${tabId}`).classList.add('block');
+            
+            // Activate Desktop Tab
+            const activeBtnD = document.getElementById(`tab-desktop-${tabId}`);
+            if(activeBtnD) {
+                activeBtnD.classList.add('bg-white', 'dark:bg-stone-700', 'shadow', 'text-emerald-800', 'dark:text-emerald-400');
+                activeBtnD.classList.remove('text-stone-600', 'dark:text-stone-300');
+            }
+
+            // Activate Mobile Tab
+            const activeBtnM = document.getElementById(`tab-mobile-${tabId}`);
+            if(activeBtnM) {
+                activeBtnM.classList.add('text-emerald-600', 'dark:text-emerald-400');
+                activeBtnM.classList.remove('text-stone-500', 'dark:text-stone-400');
+            }
+
+            // Fix Chart rendering bug when hidden
+            if(tabId === 'financials' && appState.financeChartInstance) {
+                appState.financeChartInstance.update();
+            }
+            
+            // Scroll to top smoothly on mobile tab switch
+            if(window.innerWidth < 768) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        // Charts
+        function initChart() {
+            const ctx = document.getElementById('financeChart').getContext('2d');
+            const textColor = appState.theme === 'dark' ? '#d6d3d1' : '#44403c';
+            
+            appState.financeChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: getChartData(),
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '70%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { family: 'sans-serif', size: 12 }, color: textColor } },
+                        tooltip: { callbacks: { label: function(context) { return ' ' + formatCurrency(context.raw); } } }
+                    }
+                }
+            });
+        }
+
+        function updateChart() {
+            if(appState.financeChartInstance) {
+                appState.financeChartInstance.data = getChartData();
+                appState.financeChartInstance.update();
+            } else { initChart(); }
+        }
+
+        function getChartData() {
+            let emi = 0, sip = 0, bill = 0;
+            db.financials.forEach(f => {
+                let calcAmount = 0;
+                if(appState.outflowPeriod === 'weekly') calcAmount = f.frequency === 'monthly' ? (f.amount * 12) / 52 : f.amount / 52;
+                else if (appState.outflowPeriod === 'monthly') calcAmount = f.frequency === 'monthly' ? f.amount : f.amount / 12;
+                else if (appState.outflowPeriod === 'yearly') calcAmount = f.frequency === 'monthly' ? f.amount * 12 : f.amount;
+
+                if(f.type === 'EMI' || f.type === 'Policy') emi += calcAmount;
+                if(f.type === 'SIP') sip += calcAmount;
+                if(f.type === 'Bill') bill += calcAmount;
+            });
+            return { labels: ['EMIs & Policies', 'SIPs', 'Bills'], datasets: [{ data: [emi, sip, bill], backgroundColor: ['#fbbf24', '#60a5fa', '#f472b6'], borderWidth: 0, hoverOffset: 4 }] };
+        }
+
+        window.onload = initApp;
+    </script>
+</body>
+</html>
