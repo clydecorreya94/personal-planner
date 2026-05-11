@@ -283,6 +283,16 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Expense Trend Chart -->
+                <div class="bg-white dark:bg-stone-900 rounded-2xl p-4 md:p-6 shadow-sm border border-stone-200 dark:border-stone-800 transition-colors mt-6">
+                    <h3 class="text-base md:text-lg font-semibold mb-4 flex items-center gap-2">
+                        <span>📈</span> 6-Month Expense Trend (Actuals)
+                    </h3>
+                    <div class="chart-container" style="height: 250px;">
+                        <canvas id="expenseTrendChart"></canvas>
+                    </div>
+                </div>
             </section>
 
             <!-- HOUSEHOLD TAB -->
@@ -404,6 +414,7 @@
         const appState = {
             today: new Date(),
             financeChartInstance: null,
+            trendChartInstance: null,
             outflowPeriod: 'monthly',
             theme: 'light'
         };
@@ -477,6 +488,15 @@
             if(appState.financeChartInstance) {
                 appState.financeChartInstance.options.plugins.legend.labels.color = appState.theme === 'dark' ? '#d6d3d1' : '#44403c';
                 appState.financeChartInstance.update();
+            }
+            if(appState.trendChartInstance) {
+                const textColor = appState.theme === 'dark' ? '#d6d3d1' : '#44403c';
+                const gridColor = appState.theme === 'dark' ? '#292524' : '#f5f5f4'; // stone-800 / stone-100
+                appState.trendChartInstance.options.scales.x.ticks.color = textColor;
+                appState.trendChartInstance.options.scales.y.ticks.color = textColor;
+                appState.trendChartInstance.options.scales.y.grid.color = gridColor;
+                appState.trendChartInstance.options.scales.x.grid.color = gridColor;
+                appState.trendChartInstance.update();
             }
         }
 
@@ -1079,8 +1099,9 @@
             }
 
             // Fix Chart rendering bug when hidden
-            if(tabId === 'financials' && appState.financeChartInstance) {
-                appState.financeChartInstance.update();
+            if(tabId === 'financials') {
+                if(appState.financeChartInstance) appState.financeChartInstance.update();
+                if(appState.trendChartInstance) appState.trendChartInstance.update();
             }
             
             // Scroll to top smoothly on mobile tab switch
@@ -1091,10 +1112,12 @@
 
         // Charts
         function initChart() {
-            const ctx = document.getElementById('financeChart').getContext('2d');
+            const ctxFinance = document.getElementById('financeChart').getContext('2d');
+            const ctxTrend = document.getElementById('expenseTrendChart').getContext('2d');
             const textColor = appState.theme === 'dark' ? '#d6d3d1' : '#44403c';
+            const gridColor = appState.theme === 'dark' ? '#292524' : '#f5f5f4';
             
-            appState.financeChartInstance = new Chart(ctx, {
+            appState.financeChartInstance = new Chart(ctxFinance, {
                 type: 'doughnut',
                 data: getChartData(),
                 options: {
@@ -1105,6 +1128,32 @@
                     }
                 }
             });
+
+            appState.trendChartInstance = new Chart(ctxTrend, {
+                type: 'bar',
+                data: getTrendChartData(),
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: function(context) { return ' ' + formatCurrency(context.raw); } } }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: gridColor },
+                            ticks: { 
+                                color: textColor, 
+                                callback: function(value) { return '₹' + (value >= 1000 ? (value/1000) + 'k' : value); }
+                            } 
+                        },
+                        x: { 
+                            grid: { display: false, color: gridColor },
+                            ticks: { color: textColor } 
+                        }
+                    }
+                }
+            });
         }
 
         function updateChart() {
@@ -1112,6 +1161,45 @@
                 appState.financeChartInstance.data = getChartData();
                 appState.financeChartInstance.update();
             } else { initChart(); }
+
+            if(appState.trendChartInstance) {
+                appState.trendChartInstance.data = getTrendChartData();
+                appState.trendChartInstance.update();
+            }
+        }
+
+        function getTrendChartData() {
+            const labels = [];
+            const data = [];
+            const now = new Date(appState.today);
+            
+            // Generate last 6 months dynamically
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                labels.push(d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }));
+                
+                // Sum history for this exact month/year
+                const monthSum = db.history.reduce((sum, h) => {
+                    const hDate = new Date(h.datePaid);
+                    if (hDate.getMonth() === d.getMonth() && hDate.getFullYear() === d.getFullYear()) {
+                        return sum + h.amount;
+                    }
+                    return sum;
+                }, 0);
+                
+                data.push(monthSum);
+            }
+
+            return {
+                labels: labels,
+                datasets: [{
+                    label: 'Actual Spent',
+                    data: data,
+                    backgroundColor: '#10b981', // emerald-500
+                    borderRadius: 4,
+                    barPercentage: 0.6
+                }]
+            };
         }
 
         function getChartData() {
